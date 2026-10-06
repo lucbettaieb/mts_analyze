@@ -1,0 +1,755 @@
+<title>Master Tracks Converter</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one centered working column; a tall sequencer panel breaks out wider. Light = studio grey paper, dark = rack-unit black. */
+:root {
+  --bg: #eef0f3; --surface: #ffffff; --sunken: #e4e7ec; --ink: #171a21; --muted: #5b6270; --line: #d5d9e0;
+  --accent: #2550b8; --accent-ink: #ffffff; --accent-soft: #dde6fa; --ok: #1d7a46; --warn: #a2560a; --marker: #8a3fd1;
+  --roll: #f8f9fb; --roll-dark-key: #eef0f4; --grid: #e7e9ee; --grid-strong: #c5cad3; --playhead: #d92d20;
+  --display: "Bricolage Grotesque", "Avenir Next", "Segoe UI", system-ui, sans-serif;
+  --body: "Atkinson Hyperlegible", "Helvetica Neue", Arial, system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #111317; --surface: #1a1d23; --sunken: #14161b; --ink: #eceef2; --muted: #9aa1ad; --line: #2b2f37;
+  --accent: #7ea2ff; --accent-ink: #0d1530; --accent-soft: #1f2a48; --ok: #5fd08f; --warn: #f0a24a; --marker: #c39bff;
+  --roll: #15171c; --roll-dark-key: #191c22; --grid: #1e2128; --grid-strong: #343944; --playhead: #ff6b5e; color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #111317; --surface: #1a1d23; --sunken: #14161b; --ink: #eceef2; --muted: #9aa1ad; --line: #2b2f37;
+  --accent: #7ea2ff; --accent-ink: #0d1530; --accent-soft: #1f2a48; --ok: #5fd08f; --warn: #f0a24a; --marker: #c39bff;
+  --roll: #15171c; --roll-dark-key: #191c22; --grid: #1e2128; --grid-strong: #343944; --playhead: #ff6b5e; color-scheme: dark; }
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font: 16px/1.55 var(--body); padding-inline: 16px; padding-block: 0 48px; }
+.wrap { max-width: 1080px; margin: 0 auto; display: flex; flex-direction: column; gap: 28px; }
+header.top { padding-block: 28px 4px; display: flex; flex-direction: column; gap: 6px; }
+.eyebrow { font: 500 12px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+h1 { font: 800 clamp(30px, 5vw, 46px)/1.05 var(--display); margin: 0; letter-spacing: -.01em; text-wrap: balance; }
+h2 { font: 600 22px/1.2 var(--display); margin: 0; text-wrap: balance; }
+h3 { font: 700 16px/1.3 var(--body); margin: 0; }
+p { margin: 0; max-width: 68ch; }
+.lede { color: var(--muted); font-size: 17px; }
+section { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 18px; }
+a { color: var(--accent); }
+button { font: 700 15px/1 var(--body); color: var(--ink); background: var(--surface); border: 1px solid var(--line);
+  border-radius: 8px; padding: 11px 16px; cursor: pointer; }
+button:hover { border-color: var(--accent); }
+button:focus-visible, .drop:focus-within, input:focus-visible, select:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+button:disabled { opacity: .5; cursor: default; }
+
+/* Load */
+.loadrow { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 16px; }
+.drop { border: 2px dashed var(--grid-strong); border-radius: 10px; padding: 22px; display: flex; flex-direction: column;
+  gap: 10px; align-items: flex-start; justify-content: center; background: var(--surface); transition: border-color .15s, background .15s; }
+.drop.over { border-color: var(--accent); background: var(--accent-soft); }
+.drop input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.current { display: flex; flex-direction: column; gap: 8px; }
+.filename { font: 500 14px var(--mono); color: var(--muted); word-break: break-all; }
+.songtitle { font: 800 30px/1.1 var(--display); }
+.chip { display: inline-flex; align-items: center; gap: 6px; font-size: 13.5px; font-weight: 700; padding: 4px 10px; border-radius: 999px;
+  background: var(--sunken); width: fit-content; }
+.chip.ok { color: var(--ok); } .chip.warn { color: var(--warn); }
+.error { color: var(--warn); font-weight: 700; }
+
+/* Facts */
+.facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1px; background: var(--line);
+  border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.fact { background: var(--surface); padding: 12px 16px; display: flex; flex-direction: column; gap: 2px; }
+.fact .k { font: 500 11.5px var(--mono); text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+.fact .v { font: 600 22px/1.2 var(--display); font-variant-numeric: tabular-nums; }
+
+/* Downloads */
+.dls { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+.dl { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px; display: flex;
+  flex-direction: column; gap: 8px; }
+.dl.rec { border: 2px solid var(--accent); }
+.dl .tag { font: 500 11.5px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--accent); }
+.dl p { color: var(--muted); font-size: 14.5px; flex: 1; }
+.dl button { align-self: flex-start; }
+.dlnote { font-size: 14px; color: var(--muted); }
+
+/* Sequencer */
+.seq { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; display: flex; flex-direction: column; }
+.bar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+.bar button { padding: 8px 14px; font-size: 14px; }
+.pos { font: 500 14px var(--mono); padding: 7px 10px; background: var(--sunken); border-radius: 6px; font-variant-numeric: tabular-nums; }
+.bar label { display: flex; gap: 6px; align-items: center; color: var(--muted); font-size: 14px; }
+select { font: 15px var(--body); color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 6px; max-width: 220px; }
+.seqbody { display: grid; grid-template-columns: 250px minmax(0, 1fr); height: 480px; }
+.tracks { overflow-y: auto; border-right: 1px solid var(--line); }
+.trk { display: grid; grid-template-columns: 8px minmax(0, 1fr) auto; gap: 8px; padding: 7px 10px; border-bottom: 1px solid var(--line); align-items: center; }
+.trk.off { opacity: .4; }
+.sw { width: 8px; height: 30px; border-radius: 2px; }
+.tn { font-weight: 700; font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tm { color: var(--muted); font-size: 12px; font-family: var(--mono); }
+.ms { display: flex; gap: 4px; }
+.ms button { padding: 3px 7px; font-size: 11px; border-radius: 5px; }
+.ms button.on.m { background: var(--muted); color: var(--surface); border-color: var(--muted); }
+.ms button.on.s { background: var(--warn); color: var(--surface); border-color: var(--warn); }
+#scroller { overflow-x: auto; overflow-y: hidden; position: relative; background: var(--roll); }
+#spacer { height: 100%; position: relative; }
+#roll { position: sticky; left: 0; top: 0; display: block; cursor: crosshair; }
+#tip { position: fixed; pointer-events: none; background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: 6px;
+  padding: 6px 9px; font-size: 13px; display: none; box-shadow: 0 4px 16px rgba(0,0,0,.18); z-index: 5; }
+.seqfoot { padding: 8px 12px; font-size: 13px; color: var(--muted); border-top: 1px solid var(--line); }
+
+/* Tables */
+.tablewrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; font-size: 14px; }
+th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th { font: 500 11.5px var(--mono); text-transform: uppercase; letter-spacing: .08em; color: var(--muted); background: var(--sunken); }
+td.num { text-align: right; font-variant-numeric: tabular-nums; font-family: var(--mono); font-size: 13px; }
+tr:last-child td { border-bottom: 0; }
+.two { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; }
+ol.steps { margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 8px; max-width: 70ch; }
+.small { font-size: 14px; color: var(--muted); }
+code { font: 14px var(--mono); background: var(--sunken); padding: 1px 5px; border-radius: 4px; }
+@media (max-width: 760px) {
+  .loadrow, .two { grid-template-columns: 1fr; }
+  .seqbody { grid-template-columns: 1fr; height: auto; }
+  .tracks { max-height: 200px; border-right: 0; border-bottom: 1px solid var(--line); }
+  #scroller { height: 380px; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <span class="eyebrow">Passport Master Tracks Pro · Mac, circa 1990</span>
+    <h1>Master Tracks Converter</h1>
+    <p class="lede">Open an old Master Tracks Pro song, listen to it here, and save it as a MIDI file that today's music programs can open. Everything happens in this browser. Your file is never uploaded.</p>
+  </header>
+
+  <section aria-labelledby="h-open">
+    <h2 id="h-open">1 · Open a song</h2>
+    <div class="loadrow">
+      <label class="drop" id="drop">
+        <h3>Drop a Master Tracks file here</h3>
+        <p class="small">Old Mac files often have no extension. Any Master Tracks Pro song file works.</p>
+        <input type="file" id="file">
+        <button type="button" class="primary" id="pick">Choose a file…</button>
+        <span class="error" id="err" hidden></span>
+      </label>
+      <div class="panel current" id="current" aria-live="polite">
+        <span class="eyebrow">Now open</span>
+        <span class="songtitle" id="songtitle">—</span>
+        <span class="filename" id="fname"></span>
+        <span class="chip" id="check"></span>
+      </div>
+    </div>
+  </section>
+
+  <section aria-labelledby="h-sum">
+    <h2 id="h-sum">What's in it</h2>
+    <div class="facts" id="facts"></div>
+  </section>
+
+  <section aria-labelledby="h-dl">
+    <h2 id="h-dl">2 · Save it in a modern format</h2>
+    <div class="dls">
+      <div class="dl rec">
+        <span class="tag">Start here</span>
+        <h3>MIDI for listening</h3>
+        <p>Opens in GarageBand, MuseScore, Logic or any music program and sounds right with their built-in instruments (flute, marimba, piano…).</p>
+        <button class="primary" data-dl="gm">Save listening MIDI</button>
+      </div>
+      <div class="dl">
+        <span class="tag">For the original synths</span>
+        <h3>MIDI, original setup</h3>
+        <p>Exactly as the song was set up: original channels and patch numbers for the Proteus, TX802, TX16W and RD-1000.</p>
+        <button data-dl="mid">Save original MIDI</button>
+      </div>
+      <div class="dl">
+        <span class="tag">Archive</span>
+        <h3>Complete archive</h3>
+        <p>Both MIDI files, a readable report, the full event list and a lossless JSON copy that can rebuild the original file byte for byte.</p>
+        <button data-dl="zip">Save everything (.zip)</button>
+      </div>
+    </div>
+    <p class="dlnote" id="dlnote"></p>
+  </section>
+
+  <section aria-labelledby="h-listen">
+    <h2 id="h-listen">3 · Listen and look around</h2>
+    <div class="seq">
+      <div class="bar">
+        <button class="primary" id="play">▶ Play</button>
+        <button id="stop">■ Back to start</button>
+        <span class="pos" id="pos">m 1 · 0:00.0</span>
+        <label for="zoom">Zoom <input type="range" id="zoom" min="0.02" max="0.6" step="0.01" value="0.1"></label>
+        <label for="markers">Go to <select id="markers"></select></label>
+        <label for="follow"><input type="checkbox" id="follow" checked> Follow</label>
+      </div>
+      <div class="seqbody">
+        <div class="tracks" id="tracks"></div>
+        <div id="scroller"><div id="spacer"><canvas id="roll"></canvas></div></div>
+      </div>
+      <div class="seqfoot">The sound here is a simple preview synth. Click the notes area to move the playhead · M mutes a track · S plays it alone · Space bar plays and pauses.</div>
+    </div>
+  </section>
+
+  <section aria-labelledby="h-detail">
+    <h2 id="h-detail">Song details</h2>
+    <div class="two">
+      <div class="tablewrap"><table id="markerTable"></table></div>
+      <div class="tablewrap"><table id="meterTable"></table></div>
+    </div>
+    <div class="tablewrap"><table id="trackTable"></table></div>
+  </section>
+
+  <section aria-labelledby="h-how">
+    <h2 id="h-how">Playing the MIDI file</h2>
+    <div class="panel">
+      <ol class="steps">
+        <li><b>On a Mac:</b> open <b>GarageBand</b> and drag the listening MIDI file into an empty project. Each track gets an instrument you can change.</li>
+        <li><b>Any computer:</b> install <a href="https://musescore.org" target="_blank" rel="noopener">MuseScore</a> (free) and open the MIDI file. It also shows the music as sheet music.</li>
+        <li>The <b>original MIDI</b> keeps the old patch numbers. Use it with the real Proteus/TX802 hardware or with their software emulations.</li>
+      </ol>
+    </div>
+  </section>
+</div>
+<div id="tip"></div>
+
+<script type="application/octet-stream" id="sample" data-name="__SAMPLE_NAME__">__SAMPLE_B64__</script>
+<script>
+"use strict";
+/* ================= Master Tracks Pro parser (mirrors mtspro/parser.py, see FORMAT.md) ================= */
+const MAC = (() => { try { return new TextDecoder("macintosh"); } catch (e) { return new TextDecoder("latin1"); } })();
+const u16 = (d, o) => (d[o] << 8) | d[o + 1];
+const u32 = (d, o) => ((d[o] << 24) >>> 0) + (d[o + 1] << 16) + (d[o + 2] << 8) + d[o + 3];
+const tagAt = (d, o) => String.fromCharCode(d[o], d[o + 1], d[o + 2], d[o + 3]);
+const pstr = b => b && b.length ? MAC.decode(b.subarray(1, 1 + Math.min(b[0], b.length - 1))) : "";
+class FormatError extends Error {}
+
+function parseMTS(d) {
+  if (d.length < 8 || tagAt(d, 0) !== "SCOR")
+    throw new FormatError("This isn't a Master Tracks Pro song file (it doesn't start with the SCOR marker).");
+  let pos = 0; const lens = {};
+  const chunk = prefix => {
+    const t = tagAt(d, pos);
+    if (!t.startsWith(prefix)) throw new FormatError(`Expected a ${prefix} section at byte ${pos}, found "${t}". The file may be damaged.`);
+    const len = u32(d, pos + 4);
+    if (len < 8 || pos + len > d.length) throw new FormatError(`Section ${t} has a bad length. The file may be truncated.`);
+    const hdr = d.slice(pos + 8, pos + len); lens[t] = len; pos += len; return [t, hdr];
+  };
+  const block = () => {
+    const ln = u16(d, pos);
+    if (pos + 2 + ln > d.length) throw new FormatError("The file ends in the middle of a measure. It may be truncated.");
+    const b = d.subarray(pos + 2, pos + 2 + ln), w = pos; pos += 2 + ln; return [w, b];
+  };
+  const [, songHdr] = chunk("SCOR");
+  const [, cHdr] = chunk("TK00");
+  const conductor = { header: cHdr, measures: [] };
+  for (let i = 0, n = u16(cHdr, 0x20); i < n; i++) {
+    const [w, b] = block();
+    if (b.length !== 16 && b.length !== 48) throw new FormatError(`Unexpected conductor record size at byte ${w}.`);
+    conductor.measures.push({ ti: u16(b, 0), tf: u16(b, 2), bt: u16(b, 4), mt: u16(b, 6), num: b[8], den: b[9],
+      reserved: b.slice(10, 14), mask: b[14], flags: b[15], nameRaw: b.length === 48 ? b.slice(16, 48) : null });
+  }
+  const tracks = [];
+  while (pos < d.length) {
+    const [tag, hdr] = chunk("TK");
+    const tr = { tag, header: hdr, measures: [] };
+    for (let i = 0, n = u16(hdr, 0x20); i < n; i++) {
+      const [w, b] = block();
+      if (b[b.length - 2] !== 0xff || b[b.length - 1] !== 0xff) throw new FormatError(`Measure at byte ${w} in ${tag} is missing its end mark.`);
+      const evs = []; let q = 0; const end = b.length - 2;
+      while (q < end) {
+        const st = b[q + 2];
+        if (st < 0x80 || st >= 0xf0) throw new FormatError(`Unknown event type 0x${st.toString(16)} in ${tag}. This file uses a feature the converter doesn't know yet.`);
+        if ((st & 0xf0) === 0x90) { evs.push({ note: true, tick: u16(b, q), status: st, key: b[q + 3], vel: b[q + 4], rel: b[q + 5], dur: u32(b, q + 6) }); q += 10; }
+        else { evs.push({ note: false, tick: u16(b, q), status: st, d1: b[q + 3], d2: b[q + 4], pad: b[q + 5] }); q += 6; }
+      }
+      if (q !== end) throw new FormatError(`Measure at byte ${w} in ${tag} has leftover bytes.`);
+      tr.measures.push(evs);
+    }
+    tracks.push(tr);
+  }
+  return { header: songHdr, conductor, tracks, lens };
+}
+
+const S_title = s => { const h = s.header.subarray(0, 32); const z = h.indexOf(0); return MAC.decode(h.subarray(0, z < 0 ? 32 : z)); };
+const S_ppq = s => u16(s.header, 0x22);
+const S_count = s => u16(s.header, 0x2a);
+const T_name = t => pstr(t.header.subarray(0, 32));
+const T_ch = t => t.header[0x29], T_prog = t => t.header[0x2a];
+const M_tempo = m => m.ti + m.tf / 65536;
+const M_marker = m => (m.nameRaw ? pstr(m.nameRaw) : "") || null;
+const durParts = n => [n.dur >>> 24, (n.dur >>> 16) & 255, n.dur & 0xffff];
+
+function measureStarts(s) {
+  const cm = s.conductor.measures, n = Math.max(cm.length, ...s.tracks.map(t => t.measures.length));
+  const st = []; let t = 0;
+  for (let i = 0; i <= n; i++) { st.push(t); const m = cm[Math.min(i, cm.length - 1)]; t += m ? m.mt : S_ppq(s) * 4; }
+  return st;
+}
+function beatTicks(s, i) { const cm = s.conductor.measures; return cm.length ? cm[Math.min(i, cm.length - 1)].bt : S_ppq(s); }
+function noteSpan(s, st, mi, n) {
+  const on = st[mi] + n.tick, [m, b, t] = durParts(n); let off;
+  if (!m) off = on + b * beatTicks(s, mi) + t;
+  else { const e = mi + m; while (e >= st.length - 1) st.push(st[st.length - 1] + (st[st.length - 1] - st[st.length - 2]));
+    off = st[e] + n.tick + b * beatTicks(s, e) + t; }
+  return [on, Math.max(off, on + 1)];
+}
+
+/* ---------- writer (proves the parse is lossless) ---------- */
+function serializeMTS(s) {
+  const out = []; const p16 = v => out.push(v >> 8 & 255, v & 255); const p32 = v => out.push(v >>> 24 & 255, v >>> 16 & 255, v >>> 8 & 255, v & 255);
+  const pushAll = a => { for (const x of a) out.push(x); };
+  const chunk = (tag, hdr) => { for (const c of tag) out.push(c.charCodeAt(0)); p32(s.lens[tag] ?? 8 + hdr.length); pushAll(hdr); };
+  chunk("SCOR", s.header); chunk("TK00", s.conductor.header);
+  for (const m of s.conductor.measures) { p16(m.nameRaw ? 48 : 16); p16(m.ti); p16(m.tf); p16(m.bt); p16(m.mt); out.push(m.num, m.den); pushAll(m.reserved); out.push(m.mask, m.flags); if (m.nameRaw) pushAll(m.nameRaw); }
+  for (const t of s.tracks) {
+    chunk(t.tag, t.header);
+    for (const evs of t.measures) {
+      p16(evs.reduce((a, e) => a + (e.note ? 10 : 6), 2));
+      for (const e of evs) { p16(e.tick); out.push(e.status); if (e.note) { out.push(e.key, e.vel, e.rel); p32(e.dur); } else out.push(e.d1, e.d2, e.pad); }
+      out.push(255, 255);
+    }
+  }
+  return Uint8Array.from(out);
+}
+const sameBytes = (a, b) => a.length === b.length && a.every((v, i) => v === b[i]);
+
+/* ---------- lossless JSON (same schema as mtspro/jsonio.py) ---------- */
+const hex = b => Array.from(b, x => x.toString(16).padStart(2, "0")).join("");
+const unhex = h => Uint8Array.from(h.match(/../g) || [], x => parseInt(x, 16));
+const KIND = { 0x80: "note_off", 0xa0: "poly_aftertouch", 0xb0: "control_change", 0xc0: "program_change", 0xd0: "channel_aftertouch", 0xe0: "pitch_bend" };
+function toJSON(s) {
+  const st = measureStarts(s);
+  return {
+    format: "mtspro-json", version: 1, source: "Master Tracks Pro (Passport Designs) song file",
+    title: S_title(s), ppq: S_ppq(s), measure_count: S_count(s), chunk_lengths: s.lens, header_hex: hex(s.header),
+    conductor: { header_hex: hex(s.conductor.header), measures: s.conductor.measures.map((m, i) => Object.assign({
+      measure: i + 1, start_tick: st[i], tempo: M_tempo(m), tempo_int: m.ti, tempo_frac: m.tf, meter: `${m.num}/${m.den}`,
+      numerator: m.num, denominator: m.den, beat_ticks: m.bt, measure_ticks: m.mt, reserved_hex: hex(m.reserved), beat_mask: m.mask, flags: m.flags },
+      m.nameRaw ? { marker: M_marker(m), name_hex: hex(m.nameRaw) } : {})) },
+    tracks: s.tracks.map(t => ({ tag: t.tag, name: T_name(t), channel: T_ch(t), program: T_prog(t), flags: t.header[0x28], header_hex: hex(t.header),
+      measures: t.measures.map(evs => evs.map(e => {
+        if (e.note) { const [m, b, tk] = durParts(e); const o = { tick: e.tick, type: "note", status: e.status, channel: (e.status & 15) + 1, key: e.key, velocity: e.vel, release: e.rel, duration: e.dur };
+          if (m || b) o.duration_mbt = [m, b, tk]; return o; }
+        return { tick: e.tick, type: KIND[e.status & 0xf0] || "unknown", status: e.status, channel: (e.status & 15) + 1, data1: e.d1, data2: e.d2, pad: e.pad };
+      })) })),
+  };
+}
+function fromJSON(j) {
+  if (j.format !== "mtspro-json") throw new FormatError("This JSON file wasn't made by the converter.");
+  return {
+    header: unhex(j.header_hex), lens: j.chunk_lengths || {},
+    conductor: { header: unhex(j.conductor.header_hex), measures: j.conductor.measures.map(m => ({ ti: m.tempo_int, tf: m.tempo_frac, bt: m.beat_ticks, mt: m.measure_ticks,
+      num: m.numerator, den: m.denominator, reserved: unhex(m.reserved_hex), mask: m.beat_mask, flags: m.flags, nameRaw: m.name_hex != null ? unhex(m.name_hex) : null })) },
+    tracks: j.tracks.map(t => { const h = unhex(t.header_hex); h[0x29] = t.channel; h[0x2a] = t.program;
+      return { tag: t.tag, header: h, measures: t.measures.map(evs => evs.map(e => e.type === "note"
+        ? { note: true, tick: e.tick, status: e.status, key: e.key, vel: e.velocity, rel: e.release, dur: e.duration }
+        : { note: false, tick: e.tick, status: e.status, d1: e.data1, d2: e.data2, pad: e.pad || 0 })) }; }),
+  };
+}
+
+/* ---------- Standard MIDI File export (mirrors mtspro/smf.py) ---------- */
+const GM_KEYWORDS = [[/piano/, 0], [/celest/, 8], [/glock/, 9], [/vibe/, 11], [/marimba/, 12], [/xylo/, 13], [/bell/, 14], [/organ\s*&\s*oboe|choir/, 52], [/organ/, 19],
+  [/guitar/, 24], [/bass(?!oon)/, 32], [/string/, 48], [/voice|vocal|aah/, 53], [/trumpet/, 56], [/trombone/, 57], [/horn/, 60], [/sax/, 65], [/oboe/, 68],
+  [/bassoon/, 70], [/clarinet/, 71], [/piccolo/, 72], [/flute/, 73], [/pan\s*flute/, 75], [/milky|pad|dune|warm/, 89], [/balines|gamelan/, 114], [/tiki|log|wood/, 115], [/timp/, 47], [/harp/, 46]];
+function gmProgramFor(name) {
+  const low = name.toLowerCase();
+  if (/plate|reverb|verb\b|alesis|delay|effect/.test(low) && !/flute/.test(low)) return null;
+  for (const [re, p] of GM_KEYWORDS) if (re.test(low)) return p;
+  return null;
+}
+const vlq = n => { const o = [n & 127]; n = Math.floor(n / 128); while (n) { o.unshift(128 | (n & 127)); n = Math.floor(n / 128); } return o; };
+const txt = s => Array.from(s, c => { const k = c.charCodeAt(0); return k < 256 ? k : 63; });
+const meta = (k, p) => [0xff, k, ...vlq(p.length), ...p];
+function encTrack(ev) {
+  ev.sort((a, b) => a[0] - b[0] || a[1] - b[1] || a[2] - b[2]);
+  const out = []; let last = 0;
+  for (const [t, , , raw] of ev) { out.push(...vlq(t - last), ...raw); last = t; }
+  out.push(0, 0xff, 0x2f, 0);
+  return [0x4d, 0x54, 0x72, 0x6b, out.length >>> 24 & 255, out.length >>> 16 & 255, out.length >>> 8 & 255, out.length & 255, ...out];
+}
+function exportMIDI(s, gm) {
+  const st = measureStarts(s), ppq = S_ppq(s), stats = { notes: 0, trimmed: 0 };
+  let seq = 0; const cond = []; const add = (arr, t, pri, raw) => arr.push([t, pri, seq++, raw]);
+  add(cond, 0, 1, meta(3, txt(S_title(s) || "Untitled"))); add(cond, 0, 1, meta(1, txt("Converted from Master Tracks Pro by mtspro")));
+  let pt = null, pm = null;
+  s.conductor.measures.forEach((m, i) => {
+    const bpm = M_tempo(m);
+    if (bpm > 0 && bpm !== pt) { const us = Math.max(1, Math.min(0xffffff, Math.round(60e6 / bpm))); add(cond, st[i], 1, meta(0x51, [us >> 16 & 255, us >> 8 & 255, us & 255])); pt = bpm; }
+    const key = m.num + "/" + m.den + "/" + m.bt;
+    if (key !== pm && m.den && (m.den & (m.den - 1)) === 0) { add(cond, st[i], 1, meta(0x58, [m.num, Math.log2(m.den), Math.max(1, Math.round(m.bt * 24 / ppq)) || 24, 8])); pm = key; }
+    const mk = M_marker(m); if (mk) add(cond, st[i], 1, meta(6, txt(mk)));
+  });
+  const chunks = [encTrack(cond)];
+  const used = new Set(s.tracks.map(T_ch).filter(Boolean)); const free = []; for (let c = 1; c <= 16; c++) if (c !== 10 && !used.has(c)) free.push(c);
+  for (const t of s.tracks) {
+    const ev = [], name = T_name(t);
+    let outCh = null; if (T_ch(t)) { let c = T_ch(t); if (gm && c === 10 && free.length) c = free.shift(); outCh = c - 1; }
+    add(ev, 0, 1, meta(3, txt(name || t.tag)));
+    if (name.includes("/")) add(ev, 0, 1, meta(4, txt(name.split("/").slice(1).join("/").trim())));
+    const ch0 = outCh ?? 0;
+    const prog = gm ? gmProgramFor(name) : (T_prog(t) ? T_prog(t) - 1 : null);
+    if (prog != null && prog >= 0 && prog <= 127) add(ev, 0, 2, [0xc0 | ch0, prog]);
+    const notes = new Map();
+    t.measures.forEach((evs, mi) => { for (const e of evs) {
+      const ch = outCh ?? (e.status & 15);
+      if (e.note) { const [on, off] = noteSpan(s, st, mi, e); const k = ch * 128 + e.key; if (!notes.has(k)) notes.set(k, []); notes.get(k).push([on, off, e.vel, e.rel]); }
+      else { const hi = e.status & 0xf0; if (gm && hi === 0xb0 && e.d1 === 123) continue;
+        add(ev, st[mi] + e.tick, 2, (hi === 0xc0 || hi === 0xd0) ? [hi | ch, e.d1 & 127] : [hi | ch, e.d1 & 127, e.d2 & 127]); }
+    } });
+    for (const [k, lst] of notes) {
+      lst.sort((a, b) => a[0] - b[0] || a[1] - b[1]); const merged = [];
+      for (const n of lst) { const p = merged[merged.length - 1];
+        if (p && p[0] === n[0]) { p[1] = Math.max(p[1], n[1]); p[2] = Math.max(p[2], n[2]); continue; }
+        if (p && p[1] > n[0]) { p[1] = n[0]; stats.trimmed++; } merged.push(n); }
+      const ch = Math.floor(k / 128), key = k % 128;
+      for (const [on, off, vel, rel] of merged) { add(ev, on, 3, [0x90 | ch, key, Math.max(1, vel & 127)]); add(ev, off, 0, [0x80 | ch, key, rel & 127]); stats.notes++; }
+    }
+    chunks.push(encTrack(ev));
+  }
+  const hdr = [0x4d, 0x54, 0x68, 0x64, 0, 0, 0, 6, 0, 1, chunks.length >> 8, chunks.length & 255, ppq >> 8, ppq & 255];
+  const total = hdr.length + chunks.reduce((a, c) => a + c.length, 0), out = new Uint8Array(total); let o = 0;
+  out.set(hdr, o); o += hdr.length; for (const c of chunks) { out.set(c, o); o += c.length; }
+  return { bytes: out, stats };
+}
+
+/* ---------- text report + event list (mirrors mtspro/analysis.py) ---------- */
+const NN = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+const nname = k => NN[k % 12] + (Math.floor(k / 12) - 1);
+const fmtTime = sec => { const t = Math.round(sec * 10); return Math.floor(t / 600) + ":" + ((t % 600) / 10).toFixed(1).padStart(4, "0"); };
+function secondsMap(s) {
+  const st = measureStarts(s), cm = s.conductor.measures, seg = []; let sec = 0;
+  for (let i = 0; i < st.length - 1; i++) { const m = cm[Math.min(i, cm.length - 1)]; const spt = 60 / (M_tempo(m) || 120) / S_ppq(s); seg.push([st[i], sec, spt]); sec += (st[i + 1] - st[i]) * spt; }
+  return t => { let lo = 0, hi = seg.length - 1; while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (seg[mid][0] <= t) lo = mid; else hi = mid - 1; } return seg[lo][1] + (t - seg[lo][0]) * seg[lo][2]; };
+}
+function analyze(s) {
+  const st = measureStarts(s), secs = secondsMap(s); let last = 0;
+  const tracks = s.tracks.map(t => {
+    let notes = 0, other = 0, cc123 = 0, lo = 127, hi = 0, vmin = 127, vmax = 0, vsum = 0, first = null, lastM = null; const rec = new Set();
+    t.measures.forEach((evs, mi) => { if (evs.length) { first = first ?? mi + 1; lastM = mi + 1; }
+      for (const e of evs) { rec.add((e.status & 15) + 1);
+        if (e.note) { notes++; lo = Math.min(lo, e.key); hi = Math.max(hi, e.key); vmin = Math.min(vmin, e.vel); vmax = Math.max(vmax, e.vel); vsum += e.vel; last = Math.max(last, noteSpan(s, st, mi, e)[1]); }
+        else { other++; if ((e.status & 0xf0) === 0xb0 && e.d1 === 123) cc123++; } } });
+    return { tag: t.tag, name: T_name(t), ch: T_ch(t), prog: T_prog(t), gm: gmProgramFor(T_name(t)), notes, other, cc123,
+      range: notes ? [lo, hi] : null, vel: notes ? [vmin, vmax, Math.round(vsum / notes)] : null, first, last: lastM, rec: [...rec].sort((a, b) => a - b) };
+  });
+  const cm = s.conductor.measures, changes = []; let prev = null;
+  cm.forEach((m, i) => { const k = [M_tempo(m), m.num, m.den, m.mt].join(); if (k !== prev) { changes.push({ m: i + 1, t: secs(st[i]), tempo: M_tempo(m), meter: `${m.num}/${m.den}`, ticks: m.mt }); prev = k; } });
+  const markers = []; cm.forEach((m, i) => { const mk = M_marker(m); if (mk) markers.push({ m: i + 1, t: secs(st[i]), name: mk }); });
+  return { tracks, changes, markers, lastTick: last, duration: secs(last), notes: tracks.reduce((a, t) => a + t.notes, 0), cc123: tracks.reduce((a, t) => a + t.cc123, 0) };
+}
+function reportText(s, a, fname) {
+  const L = [], w = x => L.push(x), pad = (x, n) => String(x).padEnd(n), lp = (x, n) => String(x).padStart(n);
+  w("=".repeat(78)); w(`Master Tracks Pro song: '${S_title(s)}'   (${fname})`); w("=".repeat(78));
+  w(`Resolution        : ${S_ppq(s)} PPQ`);
+  w(`Song length       : ${S_count(s)} measures in conductor; tracks hold ${Math.max(0, ...s.tracks.map(t => t.measures.length))} measures`);
+  w(`Music duration    : ${fmtTime(a.duration)} (to last note-off, tick ${a.lastTick})`);
+  w(`Tracks            : ${s.tracks.length} (+ conductor)`); w("");
+  w("Tempo / meter map"); w("-".repeat(78));
+  for (const c of a.changes) w(`  m${pad(c.m, 4)} @ ${lp(fmtTime(c.t), 7)}  tempo ${lp(c.tempo.toFixed(2), 6)}  meter ${c.meter}  (${c.ticks} ticks)`);
+  w(""); w("Markers"); w("-".repeat(78));
+  for (const m of a.markers) w(`  m${pad(m.m, 4)} @ ${lp(fmtTime(m.t), 7)}  ${m.name}`);
+  w(""); w("Tracks"); w("-".repeat(78));
+  w(`  ${pad("tag", 4)} ${pad("name", 34)} ${lp("ch", 2)} ${lp("prg", 3)} ${lp("notes", 5)} ${lp("other", 5)}  ${pad("range", 9)} meas`);
+  for (const t of a.tracks) w(`  ${pad(t.tag, 4)} ${pad(t.name.slice(0, 34), 34)} ${lp(t.ch || "-", 2)} ${lp(t.prog || "-", 3)} ${lp(t.notes, 5)} ${lp(t.other, 5)}  ${pad(t.range ? nname(t.range[0]) + "-" + nname(t.range[1]) : "-", 9)} ${t.first ? t.first + "-" + t.last : "empty"}`);
+  w(`  ${pad("", 4)} ${pad("TOTAL", 34)} ${lp("", 2)} ${lp("", 3)} ${lp(a.notes, 5)}`); w("");
+  w("Track details"); w("-".repeat(78));
+  for (const t of a.tracks) { w(`  ${t.tag} ${t.name}`);
+    w(`     output channel ${t.ch || "as recorded"}, program ${t.prog || "none"} (MIDI ${t.prog ? t.prog - 1 : "-"}), recorded on channel(s) ${t.rec.join(", ") || "-"}`);
+    if (t.vel) w(`     velocity ${t.vel[0]}-${t.vel[1]} (avg ${t.vel[2]})`);
+    if (t.cc123) w(`     other events: CC123 All Notes Off x${t.cc123}`); }
+  w(""); w("Notes on interpretation"); w("-".repeat(78));
+  w("  * Tempo is read as quarter notes per minute (16.16 fixed point).");
+  w("  * Program numbers address the original synth patches (E-mu Proteus, Yamaha TX802/TX16W,");
+  w("    Roland RD-1000, Alesis effects), not General MIDI. The *_gm.mid file uses GM stand-ins.");
+  w("  * Track channels override the recorded event channels on playback, as in MTS Pro.");
+  if (a.cc123) w(`  * ${a.cc123} 'All Notes Off' (CC123) events are kept in the original MIDI, removed in the GM one.`);
+  return L.join("\n") + "\n";
+}
+function eventList(s) {
+  const L = [], cm = s.conductor.measures;
+  for (const t of s.tracks) {
+    L.push(`--- ${t.tag} ${T_name(t)}  (channel ${T_ch(t)}, program ${T_prog(t)})`);
+    t.measures.forEach((evs, mi) => { const bt = beatTicks(s, mi) || S_ppq(s);
+      for (const e of evs) { const pos = `${String(mi + 1).padStart(4)}|${String(Math.floor(e.tick / bt) + 1).padStart(2)}|${String(e.tick % bt).padStart(3, "0")}`;
+        if (e.note) { const [m, b, tk] = durParts(e);
+          L.push(`  ${pos}  Note   ch${String((e.status & 15) + 1).padEnd(2)} ${nname(e.key).padEnd(4)} (${String(e.key).padStart(3)}) vel ${String(e.vel).padStart(3)}/${String(e.rel).padStart(3)}  dur ${m || b ? `${m}|${b}|${String(tk).padStart(3, "0")}` : tk}`); }
+        else L.push(`  ${pos}  ${(KIND[e.status & 0xf0] || "unknown").padEnd(15)} ch${String((e.status & 15) + 1).padEnd(2)} ${String(e.d1).padStart(3)} ${String(e.d2).padStart(3)}${(e.status & 0xf0) === 0xb0 && e.d1 === 123 ? "  All Notes Off" : ""}`); } });
+  }
+  L.push("--- Conductor");
+  cm.forEach((m, i) => L.push(`  ${String(i + 1).padStart(4)}|01|000  tempo ${M_tempo(m).toFixed(2)}  meter ${m.num}/${m.den}${M_marker(m) ? `  marker '${M_marker(m)}'` : ""}`));
+  return L.join("\n") + "\n";
+}
+
+/* ---------- ZIP (stored, no compression) ---------- */
+const CRC = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+const crc32 = b => { let c = 0xffffffff; for (let i = 0; i < b.length; i++) c = CRC[(c ^ b[i]) & 255] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; };
+function makeZip(files) { // [{name, data: Uint8Array}]
+  const enc = new TextEncoder(), now = new Date();
+  const dt = ((now.getHours() << 11) | (now.getMinutes() << 5) | (now.getSeconds() >> 1)) & 0xffff;
+  const dd = (((now.getFullYear() - 1980) << 9) | ((now.getMonth() + 1) << 5) | now.getDate()) & 0xffff;
+  const parts = [], central = []; let off = 0;
+  const le = (n, b) => { const a = []; for (let i = 0; i < b; i++) a.push((n >>> (8 * i)) & 255); return a; };
+  for (const f of files) {
+    const name = enc.encode(f.name), crc = crc32(f.data), sz = f.data.length;
+    const local = Uint8Array.from([...le(0x04034b50, 4), 20, 0, 0, 8, 0, 0, ...le(dt, 2), ...le(dd, 2), ...le(crc, 4), ...le(sz, 4), ...le(sz, 4), ...le(name.length, 2), 0, 0, ...name]);
+    parts.push(local, f.data);
+    central.push(Uint8Array.from([...le(0x02014b50, 4), 20, 0, 20, 0, 0, 8, 0, 0, ...le(dt, 2), ...le(dd, 2), ...le(crc, 4), ...le(sz, 4), ...le(sz, 4), ...le(name.length, 2), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, ...le(off, 4), ...name]));
+    off += local.length + sz;
+  }
+  const cdSize = central.reduce((a, c) => a + c.length, 0);
+  const end = Uint8Array.from([...le(0x06054b50, 4), 0, 0, 0, 0, ...le(files.length, 2), ...le(files.length, 2), ...le(cdSize, 4), ...le(off, 4), 0, 0]);
+  return new Blob([...parts, ...central, end], { type: "application/zip" });
+}
+
+/* ================= App ================= */
+const $ = id => document.getElementById(id);
+const esc = x => String(x).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+let song = null, info = null, baseName = "song", fileName = "", srcBytes = null, downloads = null, inArtifact = !!window.claude;
+const SAVE_OK = /\.(txt|json|md|html|zip|csv)$/i;
+
+if (window.claude && window.claude.use) window.claude.use("downloads").then(d => { downloads = d; noteDownloads(); }).catch(() => noteDownloads());
+function noteDownloads() {
+  $("dlnote").textContent = inArtifact
+    ? (downloads ? "Your browser will ask you to confirm each save. MIDI files arrive inside a .zip: double-click it to unpack." : "Saving files isn't available in this view. Open the page in a regular browser tab to save files.")
+    : "";
+}
+noteDownloads();
+
+async function offer(filename, data) {
+  const bytes = data instanceof Blob ? data : new Blob([data]);
+  if (inArtifact) {
+    if (!downloads) { $("dlnote").textContent = "Saving files isn't available in this view. Open the page in a regular browser tab to save files."; return; }
+    let name = filename, payload = bytes;
+    if (!SAVE_OK.test(filename)) { payload = makeZip([{ name: filename, data: new Uint8Array(await bytes.arrayBuffer()) }]); name = filename.replace(/\.[^.]+$/, "") + ".zip"; }
+    try { await downloads.save({ filename: name, data: payload }); $("dlnote").textContent = `Saved ${name}.`; }
+    catch (e) { $("dlnote").textContent = e && e.code === "declined" ? "Save cancelled." : e && e.code === "rate_limited" ? "A save prompt is already open. Finish that one first." : `Couldn't save the file (${e && e.code || "error"}).`; }
+    return;
+  }
+  const url = URL.createObjectURL(bytes), a = document.createElement("a");
+  a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 4000);
+  $("dlnote").textContent = `Saved ${filename} to your Downloads folder.`;
+}
+document.querySelectorAll("[data-dl]").forEach(b => b.addEventListener("click", async () => {
+  if (!song) return;
+  const k = b.dataset.dl;
+  if (k === "gm") return offer(`${baseName}_listening.mid`, exportMIDI(song, true).bytes);
+  if (k === "mid") return offer(`${baseName}_original.mid`, exportMIDI(song, false).bytes);
+  const enc = new TextEncoder();
+  const files = [
+    { name: `${baseName}_listening.mid`, data: exportMIDI(song, true).bytes },
+    { name: `${baseName}_original.mid`, data: exportMIDI(song, false).bytes },
+    { name: `${baseName}.json`, data: enc.encode(JSON.stringify(toJSON(song), null, 1) + "\n") },
+    { name: `${baseName}_report.txt`, data: enc.encode(reportText(song, info, fileName)) },
+    { name: `${baseName}_events.txt`, data: enc.encode(eventList(song)) },
+  ];
+  if (srcBytes) files.push({ name: fileName.includes(".") ? fileName : fileName + ".mts", data: srcBytes });
+  files.push({ name: "README.txt", data: enc.encode(
+`${S_title(song)} - converted from Master Tracks Pro
+
+${baseName}_listening.mid  Open this in GarageBand, MuseScore or any music program.
+${baseName}_original.mid   Original channels and patch numbers, for the original synths.
+${baseName}.json           Lossless archive of every byte of the original file.
+${baseName}_report.txt     Tempo, meters, markers and tracks.
+${baseName}_events.txt     Every note and event, measure by measure.
+`) });
+  offer(`${baseName}_converted.zip`, makeZip(files));
+}));
+
+/* ---------- loading ---------- */
+function load(bytes, name) {
+  let s;
+  const head = String.fromCharCode(...bytes.subarray(0, 64)).trimStart();
+  if (head.startsWith("{")) s = fromJSON(JSON.parse(new TextDecoder().decode(bytes)));
+  else s = parseMTS(bytes);
+  song = s; fileName = name; srcBytes = head.startsWith("{") ? null : bytes;
+  baseName = (S_title(s) || name.replace(/\.[^.]*$/, "") || "song").replace(/[^\w\- ]+/g, "").trim().replace(/\s+/g, "_").toLowerCase() || "song";
+  info = analyze(s);
+  const lossless = srcBytes ? sameBytes(serializeMTS(s), srcBytes) : null;
+  $("songtitle").textContent = S_title(s) || "Untitled";
+  $("fname").textContent = name;
+  const ck = $("check");
+  ck.className = "chip " + (lossless === false ? "warn" : "ok");
+  ck.textContent = lossless === null ? "✓ Loaded from archive" : lossless ? "✓ Read completely, every byte accounted for" : "⚠ Read with gaps: some data may be missing";
+  $("err").hidden = true;
+  renderFacts(); renderTables(); viewerLoad();
+}
+function showError(msg) { const e = $("err"); e.textContent = msg; e.hidden = false; }
+async function loadFile(f) {
+  try { load(new Uint8Array(await f.arrayBuffer()), f.name); }
+  catch (e) { showError(e instanceof FormatError || e instanceof SyntaxError ? e.message : "Couldn't read that file: " + e.message); }
+}
+$("pick").addEventListener("click", e => { e.preventDefault(); $("file").click(); });
+$("file").addEventListener("change", e => { if (e.target.files[0]) loadFile(e.target.files[0]); e.target.value = ""; });
+const drop = $("drop");
+["dragenter", "dragover"].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.add("over"); }));
+["dragleave", "drop"].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.remove("over"); }));
+drop.addEventListener("drop", e => { const f = e.dataTransfer.files[0]; if (f) loadFile(f); });
+window.addEventListener("dragover", e => e.preventDefault()); window.addEventListener("drop", e => e.preventDefault());
+
+function renderFacts() {
+  const meters = [...new Set(song.conductor.measures.map(m => m.num + "/" + m.den))];
+  const tempos = [...new Set(song.conductor.measures.map(M_tempo))];
+  const facts = [["Length", fmtTime(info.duration)], ["Tracks", info.tracks.filter(t => t.notes).length + " playing"], ["Notes", info.notes.toLocaleString()],
+    ["Measures", S_count(song)], ["Tempo", tempos.map(t => "♩=" + +t.toFixed(2)).join(" / ")], ["Meter", meters.join(" · ")]];
+  $("facts").innerHTML = facts.map(([k, v]) => `<div class="fact"><span class="k">${k}</span><span class="v">${esc(v)}</span></div>`).join("");
+}
+function renderTables() {
+  $("markerTable").innerHTML = `<thead><tr><th>Section marker</th><th>Measure</th><th>Time</th></tr></thead><tbody>` +
+    (info.markers.length ? info.markers.map(m => `<tr><td>${esc(m.name)}</td><td class="num">${m.m}</td><td class="num">${fmtTime(m.t)}</td></tr>`).join("") : `<tr><td colspan="3">No markers in this song</td></tr>`) + `</tbody>`;
+  $("meterTable").innerHTML = `<thead><tr><th>From measure</th><th>Meter</th><th>Tempo</th><th>Time</th></tr></thead><tbody>` +
+    info.changes.map(c => `<tr><td class="num">${c.m}</td><td>${c.meter}</td><td class="num">${+c.tempo.toFixed(2)}</td><td class="num">${fmtTime(c.t)}</td></tr>`).join("") + `</tbody>`;
+  $("trackTable").innerHTML = `<thead><tr><th>#</th><th>Track (synth / sound)</th><th>Channel</th><th>Patch</th><th>Notes</th><th>Range</th><th>Measures</th><th>Plays as (GM)</th></tr></thead><tbody>` +
+    info.tracks.map(t => `<tr><td class="num">${t.tag.slice(2)}</td><td>${esc(t.name)}</td><td class="num">${t.ch || "–"}</td><td class="num">${t.prog || "–"}</td><td class="num">${t.notes.toLocaleString()}</td>
+      <td>${t.range ? nname(t.range[0]) + "–" + nname(t.range[1]) : "–"}</td><td class="num">${t.first ? t.first + "–" + t.last : "empty"}</td><td>${t.gm != null ? GM_NAMES[t.gm] || "GM " + t.gm : "–"}</td></tr>`).join("") + `</tbody>`;
+}
+const GM_NAMES = { 0: "Acoustic Grand Piano", 8: "Celesta", 9: "Glockenspiel", 11: "Vibraphone", 12: "Marimba", 13: "Xylophone", 14: "Tubular Bells", 19: "Church Organ", 24: "Nylon Guitar",
+  32: "Acoustic Bass", 46: "Harp", 47: "Timpani", 48: "Strings", 52: "Choir Aahs", 53: "Voice Oohs", 56: "Trumpet", 57: "Trombone", 60: "French Horn", 65: "Alto Sax", 68: "Oboe",
+  70: "Bassoon", 71: "Clarinet", 72: "Piccolo", 73: "Flute", 75: "Pan Flute", 89: "Warm Pad", 114: "Steel Drums", 115: "Woodblock" };
+
+/* ================= Piano roll + preview playback ================= */
+const PALETTE = ["#e6194b", "#3cb44b", "#4363d8", "#f58231", "#911eb4", "#26a7c9", "#f032e6", "#9a6324", "#469990", "#808000", "#b48be8", "#7c8cff", "#e88aa8", "#4fbf7f", "#d4ae0b", "#8d8d8d"];
+let V = null; // viewer data
+const sc = $("scroller"), sp = $("spacer"), cv = $("roll"), ctx = cv.getContext("2d");
+const RULER = 34, KEYS = 34;
+let pxPerTick = +$("zoom").value, cursorTick = 0, lo = 48, hi = 72, state = [];
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+function viewerLoad() {
+  if (playing) stop();
+  const st = measureStarts(song), cm = song.conductor.measures;
+  const M = []; for (let i = 0; i < st.length - 1; i++) { const m = cm[Math.min(i, cm.length - 1)]; M.push([st[i], m.num, m.den, st[i + 1] - st[i], M_tempo(m), m.bt || S_ppq(song), i < cm.length ? M_marker(m) : null]); }
+  const segSec = []; { let s = 0; for (const m of M) { segSec.push(s); s += m[3] * 60 / (m[4] || 120) / S_ppq(song); } segSec.push(s); }
+  let end = 1; lo = 127; hi = 0;
+  const tracks = song.tracks.map((t, i) => { const notes = [];
+    t.measures.forEach((evs, mi) => { for (const e of evs) if (e.note) { const [on, off] = noteSpan(song, st, mi, e); notes.push(on, off, e.key, e.vel); end = Math.max(end, off); lo = Math.min(lo, e.key); hi = Math.max(hi, e.key); } });
+    return { tag: t.tag, name: T_name(t), ch: T_ch(t), prog: T_prog(t), gm: gmProgramFor(T_name(t)), color: PALETTE[i % PALETTE.length], notes }; });
+  if (lo > hi) { lo = 48; hi = 72; } lo = Math.max(0, lo - 2); hi = Math.min(127, hi + 2);
+  V = { M, segSec, tracks, end, endSec: 0 }; V.endSec = tickToSec(end);
+  state = tracks.map(() => ({ mute: false, solo: false })); queue = null; cursorTick = 0;
+  voicesByTrack = tracks.map(voiceFor);
+  const ms = $("markers");
+  ms.innerHTML = `<option value="">Start of song</option>` + M.map((m, i) => m[6] ? `<option value="${i}">m${i + 1} · ${esc(m[6])}</option>` : "").join("");
+  drawTracks(); layout(); sc.scrollLeft = 0; updatePos();
+}
+function measureAt(t) { const M = V.M; let a = 0, b = M.length - 1; while (a < b) { const mid = (a + b + 1) >> 1; if (M[mid][0] <= t) a = mid; else b = mid - 1; } return a; }
+function tickToSec(t) { const i = measureAt(t), m = V.M[i]; return V.segSec[i] + (t - m[0]) * 60 / (m[4] || 120) / S_ppq(song); }
+function secToTick(s) { const ss = V.segSec; let a = 0, b = V.M.length - 1; while (a < b) { const mid = (a + b + 1) >> 1; if (ss[mid] <= s) a = mid; else b = mid - 1; } const m = V.M[a]; return m[0] + (s - ss[a]) * (m[4] || 120) * S_ppq(song) / 60; }
+const audible = i => state.some(s => s.solo) ? state[i].solo : !state[i].mute;
+function drawTracks() {
+  $("tracks").innerHTML = V.tracks.map((t, i) => `<div class="trk ${audible(i) ? "" : "off"}"><div class="sw" style="background:${t.color}"></div>
+    <div><div class="tn" title="${esc(t.name)}">${esc(t.name)}</div><div class="tm">ch ${t.ch || "–"} · ${(t.notes.length / 4).toLocaleString()} notes</div></div>
+    <div class="ms"><button class="m ${state[i].mute ? "on" : ""}" data-i="${i}" data-k="mute" aria-pressed="${state[i].mute}" title="Mute">M</button>
+    <button class="s ${state[i].solo ? "on" : ""}" data-i="${i}" data-k="solo" aria-pressed="${state[i].solo}" title="Play alone">S</button></div></div>`).join("");
+}
+$("tracks").addEventListener("click", e => { const b = e.target.closest("button"); if (!b) return; const s = state[+b.dataset.i]; s[b.dataset.k] = !s[b.dataset.k]; drawTracks(); draw(); });
+$("markers").onchange = () => { const v = $("markers").value, t = v === "" ? 0 : V.M[+v][0]; seek(t); centerOn(t, true); };
+function layout() {
+  if (!V) return;
+  sp.style.width = (KEYS + V.end * pxPerTick + 60) + "px";
+  const dpr = window.devicePixelRatio || 1, w = sc.clientWidth, h = sc.clientHeight;
+  cv.width = w * dpr; cv.height = h * dpr; cv.style.width = w + "px"; cv.style.height = h + "px"; ctx.setTransform(dpr, 0, 0, dpr, 0, 0); draw();
+}
+const rowH = () => (sc.clientHeight - RULER) / (hi - lo + 1);
+const xOf = t => KEYS + t * pxPerTick - sc.scrollLeft;
+const yOf = k => RULER + (hi - k) * rowH();
+function draw() {
+  if (!V) return;
+  const W = sc.clientWidth, H = sc.clientHeight, rh = rowH(), M = V.M;
+  const t0 = Math.max(0, (sc.scrollLeft - KEYS) / pxPerTick), t1 = t0 + W / pxPerTick;
+  const C = { roll: css("--roll"), dk: css("--roll-dark-key"), grid: css("--grid"), gs: css("--grid-strong"), muted: css("--muted"), marker: css("--marker"), surf: css("--surface"), line: css("--line"), ph: css("--playhead") };
+  ctx.fillStyle = C.roll; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = C.dk; for (let k = lo; k <= hi; k++) if ([1, 3, 6, 8, 10].includes(k % 12)) ctx.fillRect(KEYS, yOf(k), W, rh);
+  ctx.textBaseline = "middle";
+  for (let i = measureAt(t0); i < M.length && M[i][0] <= t1; i++) {
+    const m = M[i], x = xOf(m[0]);
+    if (m[5] * pxPerTick > 5) { ctx.fillStyle = C.grid; for (let b = m[5]; b < m[3]; b += m[5]) ctx.fillRect(Math.round(xOf(m[0] + b)), RULER, 1, H); }
+    ctx.fillStyle = C.gs; ctx.fillRect(Math.round(x), RULER - 8, 1, H);
+    const every = Math.max(1, Math.ceil(36 / (m[3] * pxPerTick)));
+    ctx.font = "500 11px 'IBM Plex Mono', monospace"; ctx.fillStyle = C.muted;
+    if (i % every === 0) ctx.fillText(String(i + 1), x + 3, 9);
+    if (m[6]) { ctx.fillStyle = C.marker; ctx.fillRect(Math.round(x), RULER - 14, 2, H); ctx.font = "700 12px 'Atkinson Hyperlegible', sans-serif"; ctx.fillText(m[6], x + 5, 23); }
+  }
+  V.tracks.forEach((t, ti) => { const on = audible(ti), n = t.notes; ctx.fillStyle = t.color;
+    for (let i = 0; i < n.length; i += 4) { if (n[i + 1] < t0 || n[i] > t1) continue;
+      ctx.globalAlpha = on ? 0.35 + 0.65 * n[i + 3] / 127 : 0.08;
+      ctx.fillRect(xOf(n[i]), yOf(n[i + 2]) + 0.5, Math.max(2, (n[i + 1] - n[i]) * pxPerTick - 1), Math.max(1.5, rh - 1)); } });
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = C.surf; ctx.fillRect(0, RULER, KEYS, H);
+  ctx.fillStyle = C.muted; ctx.font = "10px 'IBM Plex Mono', monospace";
+  for (let k = lo; k <= hi; k++) if (k % 12 === 0 && rh * 12 > 14) ctx.fillText(nname(k), 3, yOf(k) + rh / 2);
+  ctx.fillStyle = C.line; ctx.fillRect(0, RULER - 1, W, 1); ctx.fillRect(KEYS - 1, RULER, 1, H);
+  const px = xOf(cursorTick); if (px >= KEYS) { ctx.fillStyle = C.ph; ctx.fillRect(px - 1, 0, 2, H); }
+}
+sc.addEventListener("scroll", draw);
+window.addEventListener("resize", layout);
+if (window.ResizeObserver) new ResizeObserver(layout).observe(sc);
+matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change", draw);
+new MutationObserver(draw).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+$("zoom").oninput = () => { const c = (sc.scrollLeft + sc.clientWidth / 2 - KEYS) / pxPerTick; pxPerTick = +$("zoom").value; layout(); centerOn(c, true); };
+function centerOn(t, force) { const x = KEYS + t * pxPerTick; if (force || x < sc.scrollLeft + KEYS + 40 || x > sc.scrollLeft + sc.clientWidth * 0.85) sc.scrollLeft = x - sc.clientWidth * (force ? 0.5 : 0.15); }
+cv.addEventListener("click", e => { const r = cv.getBoundingClientRect(); seek(Math.max(0, (e.clientX - r.left + sc.scrollLeft - KEYS) / pxPerTick)); });
+cv.addEventListener("mousemove", e => {
+  const r = cv.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top, tip = $("tip");
+  const t = (x + sc.scrollLeft - KEYS) / pxPerTick, k = hi - Math.floor((y - RULER) / rowH()); let hit = null;
+  for (let ti = V.tracks.length - 1; ti >= 0 && !hit; ti--) { const n = V.tracks[ti].notes; for (let i = 0; i < n.length; i += 4) if (n[i + 2] === k && n[i] <= t && n[i + 1] >= t) { hit = [ti, i]; break; } }
+  if (!hit) { tip.style.display = "none"; return; }
+  const tr = V.tracks[hit[0]], n = tr.notes, i = hit[1], mi = measureAt(n[i]), m = V.M[mi], off = n[i] - m[0];
+  tip.innerHTML = `<b style="color:${tr.color}">■</b> ${esc(tr.name)}<br>${nname(n[i + 2])} · velocity ${n[i + 3]}<br>measure ${mi + 1}, beat ${Math.floor(off / m[5]) + 1} · ${fmtTime(tickToSec(n[i]))}`;
+  tip.style.display = "block"; tip.style.left = Math.min(e.clientX + 14, innerWidth - 260) + "px"; tip.style.top = (e.clientY + 14) + "px";
+});
+cv.addEventListener("mouseleave", () => $("tip").style.display = "none");
+
+let ac = null, master = null, playing = false, startCtx = 0, startSec = 0, timer = null, queue = null, qi = 0, voices = [], voicesByTrack = [];
+function voiceFor(t) {
+  const p = t.gm ?? -1;
+  if (p >= 0 && p < 16) return { type: "triangle", a: .003, d: .6, s: 0, r: .15, lvl: .5 };
+  if (p >= 16 && p < 24) return { type: "square", a: .01, d: .1, s: .7, r: .08, lvl: .12 };
+  if (p >= 64 && p < 80) return { type: "sine", a: .03, d: .1, s: .8, r: .08, lvl: .45, vib: 5 };
+  if (p >= 88 && p < 96) return { type: "sawtooth", a: .12, d: .3, s: .6, r: .4, lvl: .12, lp: 1400 };
+  if (p >= 48 && p < 56) return { type: "sawtooth", a: .08, d: .2, s: .7, r: .3, lvl: .12, lp: 2200 };
+  if (p >= 104) return { type: "sine", a: .002, d: .35, s: 0, r: .1, lvl: .6 };
+  return { type: "triangle", a: .005, d: .3, s: .4, r: .12, lvl: .35 };
+}
+function playNote(when, dur, key, vel, v) {
+  const o = ac.createOscillator(), g = ac.createGain(); o.type = v.type; o.frequency.value = 440 * Math.pow(2, (key - 69) / 12); let out = o;
+  if (v.lp) { const f = ac.createBiquadFilter(); f.type = "lowpass"; f.frequency.value = v.lp; o.connect(f); out = f; }
+  if (v.vib) { const l = ac.createOscillator(), lg = ac.createGain(); l.frequency.value = v.vib; lg.gain.value = o.frequency.value * .004; l.connect(lg); lg.connect(o.frequency); l.start(when); l.stop(when + dur + v.r + .05); }
+  out.connect(g); g.connect(master);
+  const peak = v.lvl * Math.pow(vel / 127, 1.5) * .5, end = when + Math.max(dur, .03);
+  g.gain.setValueAtTime(0, when); g.gain.linearRampToValueAtTime(peak, when + v.a); g.gain.setTargetAtTime(peak * v.s, when + v.a, v.d / 3);
+  if (g.gain.cancelAndHoldAtTime) g.gain.cancelAndHoldAtTime(end); g.gain.setTargetAtTime(0, end, v.r / 3);
+  o.start(when); o.stop(end + v.r * 2 + .05); voices.push(o); o.onended = () => { voices = voices.filter(x => x !== o); };
+}
+function schedule() {
+  const now = ac.currentTime, horizon = now + .25;
+  while (qi < queue.length) { const q = queue[qi], when = startCtx + (q[0] - startSec); if (when > horizon) break;
+    if (when >= now - .02 && audible(q[4])) playNote(Math.max(when, now), q[1] - q[0], q[2], q[3], voicesByTrack[q[4]]); qi++; }
+  if (qi >= queue.length && now > startCtx + (V.endSec - startSec) + 1) stop(true);
+}
+function play() {
+  if (!V) return;
+  if (!ac) { ac = new (window.AudioContext || window.webkitAudioContext)(); master = ac.createGain(); master.gain.value = .5; const c = ac.createDynamicsCompressor(); master.connect(c); c.connect(ac.destination); }
+  ac.resume();
+  if (!queue) { queue = []; V.tracks.forEach((t, ti) => { const n = t.notes; for (let i = 0; i < n.length; i += 4) queue.push([tickToSec(n[i]), tickToSec(n[i + 1]), n[i + 2], n[i + 3], ti]); }); queue.sort((a, b) => a[0] - b[0]); }
+  startSec = tickToSec(cursorTick); startCtx = ac.currentTime + .08; qi = 0; while (qi < queue.length && queue[qi][0] < startSec) qi++;
+  playing = true; $("play").textContent = "❚❚ Pause"; timer = setInterval(schedule, 25); schedule(); requestAnimationFrame(frame);
+}
+function stop(reset) { playing = false; clearInterval(timer); voices.forEach(o => { try { o.stop(); } catch (e) {} }); voices = [];
+  $("play").textContent = "▶ Play"; if (reset === true) cursorTick = 0; updatePos(); draw(); }
+function seek(t) { const was = playing; if (was) stop(); cursorTick = t; updatePos(); draw(); if (was) play(); }
+function updatePos() { if (!V) return; const mi = measureAt(cursorTick), m = V.M[mi], off = Math.max(0, Math.floor(cursorTick - m[0]));
+  $("pos").textContent = `m ${mi + 1} · beat ${Math.floor(off / m[5]) + 1} · ${fmtTime(tickToSec(cursorTick))} / ${fmtTime(V.endSec)}`; }
+function frame() { if (!playing) return; cursorTick = Math.min(secToTick(startSec + Math.max(0, ac.currentTime - startCtx)), V.end);
+  if ($("follow").checked) centerOn(cursorTick, false); updatePos(); draw(); requestAnimationFrame(frame); }
+$("play").onclick = () => playing ? stop() : play();
+$("stop").onclick = () => { stop(true); centerOn(0, true); };
+document.addEventListener("keydown", e => { if (e.code === "Space" && !/INPUT|SELECT|BUTTON|TEXTAREA/.test(e.target.tagName)) { e.preventDefault(); playing ? stop() : play(); } });
+
+/* ---------- start with the bundled song ---------- */
+(() => {
+  const el = $("sample"), b64 = el.textContent.trim();
+  if (!b64 || b64.startsWith("__")) return;
+  const bin = atob(b64), bytes = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  try { load(bytes, el.dataset.name); } catch (e) { showError(e.message); }
+})();
+</script>
