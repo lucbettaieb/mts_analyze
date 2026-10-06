@@ -28,6 +28,7 @@
   --accent: #7ea2ff; --accent-ink: #0d1530; --accent-soft: #1f2a48; --ok: #5fd08f; --warn: #f0a24a; --marker: #c39bff;
   --roll: #15171c; --roll-dark-key: #191c22; --grid: #1e2128; --grid-strong: #343944; --playhead: #ff6b5e; color-scheme: dark; }
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 body { background: var(--bg); color: var(--ink); font: 16px/1.55 var(--body); padding-inline: 16px; padding-block: 0 48px; }
 .wrap { max-width: 1080px; margin: 0 auto; display: flex; flex-direction: column; gap: 28px; }
 header.top { padding-block: 28px 4px; display: flex; flex-direction: column; gap: 6px; }
@@ -54,7 +55,7 @@ button:disabled { opacity: .5; cursor: default; }
 .drop.over { border-color: var(--accent); background: var(--accent-soft); }
 .drop input { position: absolute; width: 1px; height: 1px; opacity: 0; }
 .current { display: flex; flex-direction: column; gap: 8px; }
-.filename { font: 500 14px var(--mono); color: var(--muted); word-break: break-all; }
+.filename { font: 500 14px var(--mono); color: var(--muted); overflow-wrap: anywhere; }
 .songtitle { font: 800 30px/1.1 var(--display); }
 .chip { display: inline-flex; align-items: center; gap: 6px; font-size: 13.5px; font-weight: 700; padding: 4px 10px; border-radius: 999px;
   background: var(--sunken); width: fit-content; }
@@ -142,19 +143,19 @@ code { font: 14px var(--mono); background: var(--sunken); padding: 1px 5px; bord
       </label>
       <div class="panel current" id="current" aria-live="polite">
         <span class="eyebrow">Now open</span>
-        <span class="songtitle" id="songtitle">—</span>
-        <span class="filename" id="fname"></span>
-        <span class="chip" id="check"></span>
+        <span class="songtitle" id="songtitle">No song open yet</span>
+        <span class="filename" id="fname">Choose a Master Tracks Pro file to see its tracks, listen to it, and save it as MIDI.</span>
+        <span class="chip" id="check" hidden></span>
       </div>
     </div>
   </section>
 
-  <section aria-labelledby="h-sum">
+  <section aria-labelledby="h-sum" class="needs-song" hidden>
     <h2 id="h-sum">What's in it</h2>
     <div class="facts" id="facts"></div>
   </section>
 
-  <section aria-labelledby="h-dl">
+  <section aria-labelledby="h-dl" class="needs-song" hidden>
     <h2 id="h-dl">2 · Save it in a modern format</h2>
     <div class="dls">
       <div class="dl rec">
@@ -179,7 +180,7 @@ code { font: 14px var(--mono); background: var(--sunken); padding: 1px 5px; bord
     <p class="dlnote" id="dlnote"></p>
   </section>
 
-  <section aria-labelledby="h-listen">
+  <section aria-labelledby="h-listen" class="needs-song" hidden>
     <h2 id="h-listen">3 · Listen and look around</h2>
     <div class="seq">
       <div class="bar">
@@ -198,7 +199,7 @@ code { font: 14px var(--mono); background: var(--sunken); padding: 1px 5px; bord
     </div>
   </section>
 
-  <section aria-labelledby="h-detail">
+  <section aria-labelledby="h-detail" class="needs-song" hidden>
     <h2 id="h-detail">Song details</h2>
     <div class="two">
       <div class="tablewrap"><table id="markerTable"></table></div>
@@ -579,6 +580,8 @@ function load(bytes, name) {
   ck.className = "chip " + (lossless === false ? "warn" : "ok");
   ck.textContent = lossless === null ? "✓ Loaded from archive" : lossless ? "✓ Read completely, every byte accounted for" : "⚠ Read with gaps: some data may be missing";
   $("err").hidden = true;
+  ck.hidden = false;
+  document.querySelectorAll(".needs-song").forEach(el => { el.hidden = false; });
   renderFacts(); renderTables(); viewerLoad();
 }
 function showError(msg) { const e = $("err"); e.textContent = msg; e.hidden = false; }

@@ -16,6 +16,10 @@ after changing `web/template.html` with `python3 web/build.py antar.mts`. The
 song is optional and pre-loads in the page. The JavaScript port produces
 byte-identical output to the Python tool.
 
+The same page is published with GitHub Pages from `docs/index.html`
+(https://lucbettaieb.github.io/mts_analyze/). The build never bundles a song
+into that copy because Pages sites are public, so visitors open their own file.
+
 ## Quick start
 
 ```sh
